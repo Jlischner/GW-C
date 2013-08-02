@@ -26,6 +26,11 @@ Sigma = ReSig + I*ImSig;
 A = 1/pi * abs(ImSig) ./ ( (ws-elda-ReSig).^2 + ImSig.^2);
 [a,b]=max(A( qp_thresh:length(A) ) );
 Eqp = ws( qp_thresh:length(A) )(b); %# note: problem when satellite peak higher than qp peak!
+
+ImSig1 = ImSig;
+if(useCor == 1);
+  ImSig = dat(:,4);
+endif;
 Gamma = abs( ImSig )/pi;
 dw = ws(2)-ws(1);
 dt = ts(2)-ts(1);
@@ -41,7 +46,7 @@ if( min(ws) < elda && elda < max(ws))
   GammaElda   = Gamma(IndElda);
   DGammaElda  = (Gamma(IndElda+1) - Gamma(IndElda-1) )/(2*dw);
   dE = ReSig(IndElda); %#dE=ReSig(E)-vxc
-  etak = pi*GammaElda; %# etak = |Im Sigma(E)|
+  etak = abs(ImSig1(IndElda)); %# etak = |Im Sigma(E)|
   DSigmaElda = ( Sigma(IndElda+1) - Sigma(IndElda-1) )/(2*dw);
   
   alphak  =  imag(DSigmaElda); %# alphak = Im dSigma/dw(E)
@@ -129,6 +134,7 @@ sigma_c = wsc - elda_save - 1./G;
 %# 1st and 2nd order GW+C spectral functions:
 A1 = Aqp + dA1;
 A2 = A1  + ddAI;
+
 
 elda = elda_save;
 

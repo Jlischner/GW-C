@@ -14,3 +14,4 @@ Ninter = 10; %# fine grid spacing; used when do_interpolate = 1
 zeroalpha = 1; %# set asymmetry to zero
 fitrange  = 5; %# deal with w=0 in C(w)
 qp_thresh = 1; %# helps finding the qp-peak if the satellite peak is higher
+useCor = 0; %# use corrected ImSig to avoid negative spectral function
