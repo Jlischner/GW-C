@@ -6,9 +6,11 @@ gwc_inp;
 
 %# derived variables:
 %#-------------------
-ws = dat(:,1);
+ws    = dat(:,1);
 ReSig = dat(:,2);
 ImSig = dat(:,3);
+dw = ws(2)-ws(1);
+dt = ts(2)-ts(1);
 
 if(do_interpolate == 1);
   wso = ws;
@@ -21,40 +23,51 @@ if(do_interpolate == 1);
   ImSig = interp1(wso,ImSigo,ws);
 endif;
 
+%# calculate GW spectral function:
+%#--------------------------------
 ReSig = ReSig-vxc-dE_hedin;
 Sigma = ReSig + I*ImSig;
-A = 1/pi * abs(ImSig) ./ ( (ws-elda-ReSig).^2 + ImSig.^2);
-[a,b]=max(A( qp_thresh:length(A) ) );
-Eqp = ws( qp_thresh:length(A) )(b); %# note: problem when satellite peak higher than qp peak!
+Agw = 1/pi * abs(ImSig) ./ ( (ws-elda-ReSig).^2 + ImSig.^2);
 
+%# use sharper ImSig if necessary:
+%# -------------------------------
 ImSig1 = ImSig;
 if(useCor == 1);
   ImSig = dat(:,4);
 endif;
 Gamma = abs( ImSig )/pi;
-dw = ws(2)-ws(1);
-dt = ts(2)-ts(1);
 
-elda_save = elda;
+%# at which energy should the cumulant be evaluated
+%# Ec = Eqp - Almbladh/Hedin recipe
+%# Ec = elda - Aryasetiawan recipe
+%# ------------------------------------------------
 if( useEqp == 1);
-  elda = Eqp;
+  [a,b]=max(Agw( qp_thresh:length(Agw) ) );
+  Eqp = ws( qp_thresh:length(Agw) )(b); %# note: problem when satellite peak higher than qp peak!
+  Ec = Eqp;
+else;
+  Ec = elda;
 endif;
 
-if( min(ws) < elda && elda < max(ws))
+if( min(ws) < Ec && Ec < max(ws))
   
-  [a,IndElda] = min( abs(elda-ws) );
-  GammaElda   = Gamma(IndElda);
-  DGammaElda  = (Gamma(IndElda+1) - Gamma(IndElda-1) )/(2*dw);
-  dE = ReSig(IndElda); %#dE=ReSig(E)-vxc
-  etak = abs(ImSig1(IndElda)); %# etak = |Im Sigma(E)|
-  DSigmaElda = ( Sigma(IndElda+1) - Sigma(IndElda-1) )/(2*dw);
+  [a,IndEc] = min( abs(Ec-ws) );
+  GammaEc   = Gamma(IndEc);
+  DGammaEc  = (Gamma(IndEc+1) - Gamma(IndEc-1) )/(2*dw);
+  dE = ReSig(IndEc); %#dE=ReSig(E)-vxc
+  etak = abs(ImSig1(IndEc)); %# etak = |Im Sigma(E)|
+  DSigmaEc = ( Sigma(IndEc+1) - Sigma(IndEc-1) )/(2*dw);
   
-  alphak  =  imag(DSigmaElda); %# alphak = Im dSigma/dw(E)
-  gammak  = -real(DSigmaElda); %# gammak = -Re dSigma/dw(E)
+  alphak  =  imag(DSigmaEc); %# alphak = Im dSigma/dw(E)
+  gammak  = -real(DSigmaEc); %# gammak = -Re dSigma/dw(E)
 
 else
   printf("error - bad freq. range!");
   break;
+endif;
+
+if(useEqp == 0);
+  Eqp = Ec + dE;
 endif;
 
 if(zeroalpha == 1);
@@ -62,39 +75,82 @@ if(zeroalpha == 1);
 endif;
 
 %# formula for cumulant function:
-%# C(w) = ( Gamma(w+E)*Theta(mu-[w+E]) - Gamma(E) - w*dGamma/dw(E) )/w^2
+%# C(w) = ( Gamma(w) - Gamma(Ec) - w*dGamma/dw(Ec) )/(w-Ec)^2
 %#----------------------------------------------------------------------
-CS = Gamma.*( ws < eF )- GammaElda-(ws-elda)*DGammaElda ;
-denom = ws-elda;
+CS = Gamma - GammaEc - (ws-Ec)*DGammaEc ;
+denom = ws-Ec;
 CS2 = CS ./ denom.^2;
 
 %# doing interpolation to get smooth cumulant:
 fitmin = -fitrange;
 fitmax = +fitrange;
-CS2A= CS2(IndElda + fitmin);
-CS2B= CS2(IndElda + fitmax); 
+CS2A= CS2(IndEc + fitmin);
+CS2B= CS2(IndEc + fitmax); 
 
-for ii = fitmin:fitmax;
-  
+for ii = fitmin:fitmax;  
   wA = (fitmax-ii)/(fitmax-fitmin);
   wB = (ii-fitmin)/(fitmax-fitmin);
-  CS2(IndElda + ii) = wA*CS2A + wB*CS2B;
+  CS2(IndEc + ii) = wA*CS2A + wB*CS2B;
 endfor;
 
-%# calculate first order cumulant contribution
+%# now calculate full cumulant spectral function by fourier transform to real time:
+%# compare Eq. (221) of Almbadh/Hedin for Cqp(t)
+%# note that we have include the energy eigenvalue Eqp in Cqp (instead of just the shift dE)
+%# -------------------------------------------------------------------------------------
+Cqp    = -I*ts*Eqp - etak*abs(ts) + I*alphak*sign(ts) - gammak;
+expCqp = exp(Cqp);
+
+%# Cqp(t) = int dw ImSig(w)/(w-Ec)^2 * e^{i(Ec-w)t} [Almbladh Eq. (219), Aryasetiawan PRL Eq. (8)]
+%# -----------------------------------------------------------------------------------------------
+Csat   = transpose( dw*sum( dmult(CS2, exp(-I*ws*ts')), 1) );
+Csat .*= exp(I*Ec*ts);
+expC   = exp(Csat) .* expCqp;
+
+%# calculate GWC spectral function:
+%# A(w) = 1/(2*pi) int dt e^{iwt} e^{ -iEc*t + C(t) }   [Aryasetiawan/Gunnarsson Eq. (178)]
+%# ----------------------------------------------------------------------------------------
+exptwN = exp(I*ts*wsc');
+Ac = sum( dmult(expC, exptwN ),1); %# GW+C full spectral function
+Ac = transpose(Ac)*dt/2/pi;
+
+%# calculate effectiv GWC self energy:
+G = sum( dmult( expC .* (ts<0) , exptwN ),1); %# GW+C full spectral function  
+G = I*dt*transpose(G);
+sigma_c = wsc - elda - 1./G;
+
+%# hedin method: don't separate Cqp from Csat:
+%# -------------------------------------------
+beta  = interp1(ws-Ec,abs(ImSig),ws); %# need to shift ImSig! beta(w) = |ImSig(w+ek)|/pi
+beta(isna(beta)) = 0.0;
+beta /= pi;
+wt = ws*ts';
+f    = exp(-I*wt) + I*wt - ones(size(wt ));
+f    = dmult(1./ws.^2,f);
+[a,b] = min(abs(ws));
+f(b,:) = -ts.^2/2; %# use analytic result for w=0
+Cret   = dw*sum( dmult(beta,f), 1); %# \int dw beta(w) * ( exp{-iwt} + iwt - 1 )/w^2
+eta = 0.01;
+Eshift = -dw*real( sum(beta./(ws+I*eta) ) );
+
+Acum = sum( dmult( exp(-I*(Eqp-Eshift)*ts' + Cret) , exptwN ), 1 );
+Acum = transpose(Acum); 
+Acum *= dt/(2*pi);
+
+%# calculate first order cumulant contribution without workin in time:
+%# -------------------------------------------------------------------
 Aqp2 = (etak*cos(alphak)-(ws-Eqp)*sin(alphak) )./( (ws-Eqp).^2 + etak.^2);
 Aqp2 *= exp(-gammak)/pi;
 dA1s = dw*conv(Aqp2,CS2);
 
 %# dA1 lives on shifted grid wsi:
 wsi  = dw*[0:length(Aqp2)+length(CS2)-2]';
-wsi += 2*ws(1)-elda;
+wsi += 2*ws(1)-Ec;
 dA1 = interp1(wsi,dA1s,wsc);
 
 %# second order expansion without working in time
 CS2conv = dw*conv(CS2,CS2)/2; 
 wsconv  = dw*[0:2*length(CS2)-2]';
-wsconv += 2*ws(1)-2*elda;
+wsconv += 2*ws(1)-2*Ec;
 
 Aqpconv = (etak*cos(alphak)-(wsconv-Eqp)*sin(alphak) )./( (wsconv-Eqp).^2 + etak.^2);
 Aqpconv *= exp(-gammak)/pi;
@@ -103,41 +159,14 @@ wsdd    = dw*[0:2*length(wsconv)-2]';
 wsdd   += 2*wsconv(1); 
 ddAI    = interp1(wsdd,ddA,wsc);
 
-%# now calculate full cumulant spectral function by fourier transform to real time:
-Cqp   = -I*ts*elda - etak*abs(ts) + I*alphak*sign(ts) - gammak;
-expCqp= exp(Cqp);
-exptw = exp(I*ts*ws');
-
-Csat   = transpose( dw*sum( dmult(CS2, exp(-I*ws*ts')), 1) );
-Csat .*= exp(I*elda*ts);
-expC   = exp(Csat) .* expCqp;
-exptwN = exp(I*ts*wsc');
-
-Aqp  = sum( dmult(expCqp, exptwN ),1);
-Aqp  = transpose(Aqp);
-Aqp *= dt/2/pi;
-
-Ac = sum( dmult(expC, exptwN ),1); %# GW+C full spectral function
-Ac = transpose(Ac);
-Ac *= dt/2/pi;
-
-dA = dt* sum( dmult( expCqp .* Csat, exptwN), 1); %# first order satellite corr.
-dA = transpose(dA);
-dA /= 2*pi;
-
-G = sum( dmult( expC .* (ts<0) , exptwN ),1); %# GW+C full spectral function  
-G = transpose(G);
-G *= I*dt;
-%# self-energy from GW+C:
-sigma_c = wsc - elda_save - 1./G;
+%# quasiparticle part of GWC spectral function:
+Aqp = (etak*cos(alphak)-(wsc-Eqp)*sin(alphak) )./( (wsc-Eqp).^2 + etak.^2);
+Aqp *= exp(-gammak)/pi;
 
 %# 1st and 2nd order GW+C spectral functions:
 A1 = Aqp + dA1;
 A2 = A1  + ddAI;
 
-
-elda = elda_save;
-
-plot(wsc,Ac,'r-',ws,A,'b-',wsc,A2,'g-');
+plot(wsc,Ac,'r-',ws,Agw,'b-',wsc,Acum,'g-');
 more on;
 
