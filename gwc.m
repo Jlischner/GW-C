@@ -17,7 +17,7 @@ if(do_interpolate == 1);
   ReSigo = ReSig;
   ImSigo = ImSig;
   
-  dwf = ( ws(2)-ws(1) )/Ninter;
+  dw = ( ws(2)-ws(1) )/Ninter;
   ws = [min(wso) : dwf : max(wso)]';
   ReSig = interp1(wso,ReSigo,ws);
   ImSig = interp1(wso,ImSigo,ws);
@@ -54,10 +54,10 @@ if( min(ws) < Ec && Ec < max(ws))
   [a,IndEc] = min( abs(Ec-ws) );
   GammaEc   = Gamma(IndEc);
   DGammaEc  = (Gamma(IndEc+1) - Gamma(IndEc-1) )/(2*dw);
-  dE = ReSig(IndEc); %#dE=ReSig(E)-vxc
+  dE   = ReSig(IndEc); %#dE=ReSig(E)-vxc
   etak = abs(ImSig1(IndEc)); %# etak = |Im Sigma(E)|
+
   DSigmaEc = ( Sigma(IndEc+1) - Sigma(IndEc-1) )/(2*dw);
-  
   alphak  =  imag(DSigmaEc); %# alphak = Im dSigma/dw(E)
   gammak  = -real(DSigmaEc); %# gammak = -Re dSigma/dw(E)
 
@@ -67,11 +67,11 @@ else
 endif;
 
 if(useEqp == 0);
-  Eqp = Ec + dE;
+  Eqp = Ec + dE; %# use on-shell self-energy correction
 endif;
 
 if(zeroalpha == 1);
-  alphak = 0.;
+  alphak = 0.; %# set asymmetry factor to zero
 endif;
 
 %# formula for cumulant function:
@@ -79,19 +79,9 @@ endif;
 %#----------------------------------------------------------------------
 CS = Gamma - GammaEc - (ws-Ec)*DGammaEc ;
 denom = ws-Ec;
+CSpp = ( CS(IndEc+1)-2*CS(IndEc)+CS(IndEc-1) ) / dw^2; %# use analytical form at w=Ec
 CS2 = CS ./ denom.^2;
-
-%# doing interpolation to get smooth cumulant:
-fitmin = -fitrange;
-fitmax = +fitrange;
-CS2A= CS2(IndEc + fitmin);
-CS2B= CS2(IndEc + fitmax); 
-
-for ii = fitmin:fitmax;  
-  wA = (fitmax-ii)/(fitmax-fitmin);
-  wB = (ii-fitmin)/(fitmax-fitmin);
-  CS2(IndEc + ii) = wA*CS2A + wB*CS2B;
-endfor;
+CS2(IndEc) = CSpp/2;
 
 %# now calculate full cumulant spectral function by fourier transform to real time:
 %# compare Eq. (221) of Almbadh/Hedin for Cqp(t)
@@ -100,7 +90,7 @@ endfor;
 Cqp    = -I*ts*Eqp - etak*abs(ts) + I*alphak*sign(ts) - gammak;
 expCqp = exp(Cqp);
 
-%# Cqp(t) = int dw ImSig(w)/(w-Ec)^2 * e^{i(Ec-w)t} [Almbladh Eq. (219), Aryasetiawan PRL Eq. (8)]
+%# Csat(t) = int dw ImSig(w)/(w-Ec)^2 * e^{i(Ec-w)t} [Almbladh Eq. (219), Aryasetiawan PRL Eq. (8)]
 %# -----------------------------------------------------------------------------------------------
 Csat   = transpose( dw*sum( dmult(CS2, exp(-I*ws*ts')), 1) );
 Csat .*= exp(I*Ec*ts);
@@ -124,49 +114,51 @@ beta  = interp1(ws-Ec,abs(ImSig),ws); %# need to shift ImSig! beta(w) = |ImSig(w
 beta(isna(beta)) = 0.0;
 beta /= pi;
 wt = ws*ts';
-f    = exp(-I*wt) + I*wt - ones(size(wt ));
+f    = exp(-I*wt) + I*wt - ones(size(wt));
 f    = dmult(1./ws.^2,f);
+
 [a,b] = min(abs(ws));
 f(b,:) = -ts.^2/2; %# use analytic result for w=0
 Cret   = dw*sum( dmult(beta,f), 1); %# \int dw beta(w) * ( exp{-iwt} + iwt - 1 )/w^2
-eta = 0.01;
 Eshift = -dw*real( sum(beta./(ws+I*eta) ) );
 
 Acum = sum( dmult( exp(-I*(Eqp-Eshift)*ts' + Cret) , exptwN ), 1 );
 Acum = transpose(Acum); 
 Acum *= dt/(2*pi);
 
-%# calculate first order cumulant contribution without workin in time:
+%# calculate first order cumulant contribution without working in time:
 %# -------------------------------------------------------------------
-Aqp2 = (etak*cos(alphak)-(ws-Eqp)*sin(alphak) )./( (ws-Eqp).^2 + etak.^2);
-Aqp2 *= exp(-gammak)/pi;
-dA1s = dw*conv(Aqp2,CS2);
+Aqp  = (etak*cos(alphak)-(ws-Eqp)*sin(alphak) )./( (ws-Eqp).^2 + etak.^2);
+Aqp *= exp(-gammak)/pi;
+dA1s = dw*conv(Aqp,CS2);
 
-%# dA1 lives on shifted grid wsi:
-wsi  = dw*[0:length(Aqp2)+length(CS2)-2]';
+wsi  = dw*[0:length(Aqp)+length(CS2)-2]'; %# dA1 lives on shifted grid wsi
 wsi += 2*ws(1)-Ec;
 dA1 = interp1(wsi,dA1s,wsc);
 
-%# second order expansion without working in time
+%# second order expansion without working in time:
+%# -----------------------------------------------
 CS2conv = dw*conv(CS2,CS2)/2; 
 wsconv  = dw*[0:2*length(CS2)-2]';
 wsconv += 2*ws(1)-2*Ec;
 
-Aqpconv = (etak*cos(alphak)-(wsconv-Eqp)*sin(alphak) )./( (wsconv-Eqp).^2 + etak.^2);
-Aqpconv *= exp(-gammak)/pi;
-ddA     = dw*conv(Aqpconv, CS2conv);
-wsdd    = dw*[0:2*length(wsconv)-2]';
-wsdd   += 2*wsconv(1); 
-ddAI    = interp1(wsdd,ddA,wsc);
+Aqp   = (etak*cos(alphak)-(wsconv-Eqp)*sin(alphak) )./( (wsconv-Eqp).^2 + etak.^2);
+Aqp  *= exp(-gammak)/pi;
+ddA   = dw*conv(Aqp, CS2conv);
+wsdd  = dw*[0:2*length(wsconv)-2]';
+wsdd += 2*wsconv(1); 
+dA2   = interp1(wsdd,ddA,wsc);
 
 %# quasiparticle part of GWC spectral function:
-Aqp = (etak*cos(alphak)-(wsc-Eqp)*sin(alphak) )./( (wsc-Eqp).^2 + etak.^2);
+%# --------------------------------------------
+Aqp  = (etak*cos(alphak)-(wsc-Eqp)*sin(alphak) )./( (wsc-Eqp).^2 + etak.^2);
 Aqp *= exp(-gammak)/pi;
 
-%# 1st and 2nd order GW+C spectral functions:
+%# add 1st order and 2nd order satellite to Aqp:
+%# ---------------------------------------------
 A1 = Aqp + dA1;
-A2 = A1  + ddAI;
+A2 = A1  + dA2;
 
-plot(wsc,Ac,'r-',ws,Agw,'b-',wsc,Acum,'g-');
+plot(wsc,Ac,'r-',ws,Agw,'b-',wsc,A2,'g-',wsc,Acum,'m-');
 more on;
 
