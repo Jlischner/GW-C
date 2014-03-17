@@ -10,7 +10,7 @@ ts  = [-60: 0.1 : 60]'; %# grid of times (plot ts versus expC as check)
 wsc = [-30 :0.1: 20]'; %# freq grid for gwc spectral function (eV)
 useEqp = 1; %# use Eqp in cumulant from Dyson eq.
 do_interpolate = 0; %# interpolate sigma onto finer freq grid
-Ninter = 10; %# fine grid spacing; used when do_interpolate = 1
+Ninter = 6; %# fine grid spacing; used when do_interpolate = 1
 zeroalpha = 0; %# set asymmetry to zero
 qp_thresh = 1; %# helps finding the qp-peak if the satellite peak is higher
 useCor = 0; %# use corrected ImSig to avoid negative spectral function

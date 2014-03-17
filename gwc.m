@@ -18,7 +18,7 @@ if(do_interpolate == 1);
   ImSigo = ImSig;
   
   dw = ( ws(2)-ws(1) )/Ninter;
-  ws = [min(wso) : dwf : max(wso)]';
+  ws = [min(wso) : dw : max(wso)]';
   ReSig = interp1(wso,ReSigo,ws);
   ImSig = interp1(wso,ImSigo,ws);
 endif;
@@ -110,17 +110,16 @@ sigma_c = wsc - elda - 1./G;
 
 %# hedin method: don't separate Cqp from Csat:
 %# -------------------------------------------
-beta  = interp1(ws-Ec,abs(ImSig),ws); %# need to shift ImSig! beta(w) = |ImSig(w+ek)|/pi
-beta(isna(beta)) = 0.0;
-beta /= pi;
-wt = ws*ts';
+beta = abs(ImSig)/pi;
+wm = ws - Ec;
+wt = wm*ts';
 f    = exp(-I*wt) + I*wt - ones(size(wt));
-f    = dmult(1./ws.^2,f);
+f    = dmult(1./wm.^2,f);
 
-[a,b] = min(abs(ws));
+[a,b] = min(abs(wm));
 f(b,:) = -ts.^2/2; %# use analytic result for w=0
 Cret   = dw*sum( dmult(beta,f), 1); %# \int dw beta(w) * ( exp{-iwt} + iwt - 1 )/w^2
-Eshift = -dw*real( sum(beta./(ws+I*eta) ) );
+Eshift = -dw*real( sum(beta./(wm+I*eta) ) );
 
 Acum = sum( dmult( exp(-I*(Eqp-Eshift)*ts' + Cret) , exptwN ), 1 );
 Acum = transpose(Acum); 
