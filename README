@@ -1,0 +1,21 @@
+README for GW+cumulant theory code:
+
+The code is written in octave and can be run via
+octave gwc.m
+
+The input file is gwc_inp.m.  
+
+The input data (=the freq grid and self energy from a GW calculation )
+should be provided in a file called sigma.dat, where the 1st column
+contains the freq grid, the 2nd column the real part of the self
+energy and the 3rd column the imaginary part. 
+
+An example input file (with a corresponding sigma.dat) file for a
+three-dimenesional jellium calculation is provided.
+
+The output is contained in the file gwc_output, where the 1st column
+is the freq grid and the 2nd column is the GW+cumulant spectral
+function.
+
+All energies are in eV.
+

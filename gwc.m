@@ -159,5 +159,12 @@ A1 = Aqp + dA1;
 A2 = A1  + dA2;
 
 plot(wsc,Ac,'r-',ws,Agw,'b-',wsc,A2,'g-',wsc,Acum,'m-');
+
+fid = fopen("gwc_output","w");
+for ii = 1:length(wsc);
+  fprintf(fid,"%f %f \n",wsc(ii),real(Ac)(ii));
+endfor;
+fclose(fid);
+
 more on;
 
